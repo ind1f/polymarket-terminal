@@ -1,0 +1,291 @@
+:root {
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --raised: #f2f2f2;
+  --line: #e2e2e2;
+  --text: #000000;
+  --muted: #6b6b6b;
+  --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+button,
+input {
+  font: inherit;
+  color: inherit;
+}
+
+.app {
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr) 290px;
+  grid-template-rows: 40px minmax(0, 1fr);
+  gap: 1px;
+  height: 100%;
+  background: var(--line);
+}
+
+.topbar {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+  background: var(--surface);
+}
+
+.topbar-status {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.badge {
+  padding: 1px 6px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.panel {
+  min-height: 0;
+  background: var(--surface);
+}
+
+.markets {
+  display: flex;
+  flex-direction: column;
+}
+
+.search {
+  margin: 10px;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--bg);
+  outline: none;
+}
+
+.search:focus {
+  border-color: var(--muted);
+}
+
+.market-list {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.market-row {
+  display: block;
+  width: 100%;
+  padding: 9px 12px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.market-row:hover {
+  background: var(--raised);
+}
+
+.market-row.active {
+  background: var(--raised);
+  box-shadow: inset 2px 0 var(--text);
+}
+
+.market-question {
+  display: block;
+}
+
+.market-meta {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 3px;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.detail {
+  display: flex;
+  flex-direction: column;
+  padding: 14px;
+}
+
+.detail-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+h1 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+h2 {
+  margin: 0;
+  padding: 12px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.tabs {
+  display: flex;
+  flex: none;
+  gap: 2px;
+}
+
+.tabs button {
+  padding: 3px 10px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.tabs button.active {
+  border-color: var(--text);
+  background: var(--text);
+  color: var(--bg);
+}
+
+.stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 26px;
+  margin: 14px 0;
+}
+
+.stats dt {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.stats dd {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 15px;
+}
+
+.chart-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.chart-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+.chart {
+  position: absolute;
+  inset: 0;
+}
+
+.book-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.book {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.book-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  padding: 2px 12px;
+}
+
+.book-row span:not(.book-bar) {
+  position: relative;
+  text-align: right;
+}
+
+.book-row:not(.book-head) span:nth-child(2),
+.book-head span:first-child {
+  text-align: left;
+}
+
+.book-head {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.book-bar {
+  position: absolute;
+  top: 1px;
+  right: 0;
+  bottom: 1px;
+}
+
+.book-bar.bid {
+  background: #e4e4e4;
+}
+
+.book-bar.ask {
+  background: repeating-linear-gradient(135deg, #c8c8c8 0 1px, transparent 1px 5px);
+}
+
+.book-side-label {
+  padding: 3px 12px;
+  color: var(--muted);
+  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 11px;
+}
+
+.book-spread {
+  margin: 4px 0;
+  padding: 4px 12px;
+  border-block: 1px solid var(--line);
+  color: var(--muted);
+  text-align: center;
+}
+
+.message {
+  margin: 0;
+  padding: 12px;
+  color: var(--muted);
+}
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
