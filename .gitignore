@@ -1,0 +1,36 @@
+# Secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Node
+node_modules/
+dist/
+build/
+
+# Recorded data
+data/
+*.db
+*.sqlite
+*.sqlite3
+*.duckdb
+*.parquet
+
+# Logs
+logs/
+*.log
+
+# OS and editors
+.DS_Store
+.idea/
+.vscode/
