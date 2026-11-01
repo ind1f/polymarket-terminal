@@ -3,7 +3,7 @@ import json
 import logging
 import time
 from collections import Counter
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 
 import websockets
 
@@ -51,24 +51,29 @@ class Feed:
         self._universe = tokens
         await self._sync()
 
-    async def watch(self, token: str, listener: Listener) -> None:
-        self._watch_counts[token] += 1
-        self._listeners.setdefault(token, set()).add(listener)
+    async def watch(self, tokens: Iterable[str], listener: Listener) -> None:
+        for token in tokens:
+            self._watch_counts[token] += 1
+            self._listeners.setdefault(token, set()).add(listener)
         await self._sync()
 
-    async def unwatch(self, token: str, listener: Listener) -> None:
-        self._watch_counts[token] -= 1
-        if self._watch_counts[token] <= 0:
-            del self._watch_counts[token]
-        listeners = self._listeners.get(token, set())
-        listeners.discard(listener)
-        if not listeners:
-            self._listeners.pop(token, None)
+    async def unwatch(self, tokens: Iterable[str], listener: Listener) -> None:
+        for token in tokens:
+            self._watch_counts[token] -= 1
+            if self._watch_counts[token] <= 0:
+                del self._watch_counts[token]
+            listeners = self._listeners.get(token, set())
+            listeners.discard(listener)
+            if not listeners:
+                self._listeners.pop(token, None)
         await self._sync()
 
     def view(self, token: str) -> dict:
         book = self.books.get(token)
         return {"connected": self.connected, "book": book.view() if book else None}
+
+    def quotes(self, tokens: Iterable[str]) -> dict[str, dict]:
+        return {token: self.books[token].quote() for token in tokens if token in self.books}
 
     def _desired(self) -> set[str]:
         return self._universe | set(self._watch_counts)

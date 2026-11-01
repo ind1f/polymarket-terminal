@@ -27,6 +27,21 @@ export type Book = {
   timestamp: number;
 };
 
+export type AppChartEntry = {
+  rank: number;
+  id: string;
+  name: string;
+  rating: number | null;
+  ratings: number | null;
+};
+
+export type AppChart = {
+  chart: "free" | "paid";
+  title: string;
+  fetched_ms: number;
+  apps: AppChartEntry[];
+};
+
 export type PricePoint = { time: number; value: number };
 
 export type Interval = "1d" | "1w" | "1m" | "max";
@@ -123,6 +138,10 @@ export async function searchEvents(query: string, signal: AbortSignal): Promise<
     .map(toEvent)
     .filter((event) => event.markets.length > 0)
     .sort((a, b) => b.volume24h - a.volume24h);
+}
+
+export async function fetchAppChart(chart: string, signal: AbortSignal): Promise<AppChart> {
+  return getJson<AppChart>(`/api/app-store/${chart}`, signal);
 }
 
 export async function fetchHistory(

@@ -49,3 +49,11 @@ def test_snapshot_discards_previous_levels():
 
 def test_depth_limits_levels():
     assert len(snapshot().view(depth=1)["bids"]) == 1
+
+
+def test_quote_is_best_bid_and_ask():
+    assert snapshot().quote() == {"bid": 0.25, "ask": 0.26}
+
+
+def test_quote_of_empty_book_has_no_prices():
+    assert Book().quote() == {"bid": None, "ask": None}

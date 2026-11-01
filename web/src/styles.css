@@ -238,6 +238,10 @@ h2 {
   text-align: right;
 }
 
+.outcome-row.with-rank {
+  grid-template-columns: minmax(0, 1fr) 44px repeat(3, 70px) 80px;
+}
+
 .outcome-row:last-child {
   border-bottom: 0;
 }
@@ -287,10 +291,83 @@ button.outcome-row:hover,
   flex: none;
 }
 
+.chart-row {
+  display: flex;
+  flex: 1;
+  gap: 14px;
+  min-height: 200px;
+}
+
 .chart-wrap {
   position: relative;
   flex: 1;
-  min-height: 200px;
+  min-width: 0;
+}
+
+.app-panel {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  width: 330px;
+  min-height: 0;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+
+.app-panel-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--line);
+  font-weight: 600;
+}
+
+.app-panel-head .muted {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.app-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.app-row {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) 40px 76px;
+  gap: 6px;
+  padding: 3px 10px;
+  font-family: var(--mono);
+  font-size: 12px;
+  text-align: right;
+}
+
+.app-row > :nth-child(2) {
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-row.traded {
+  font-weight: 700;
+}
+
+.app-row.target {
+  background: var(--raised);
+  box-shadow: inset 2px 0 var(--text);
+}
+
+.app-row-head {
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 11px;
 }
 
 .chart {

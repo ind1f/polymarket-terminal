@@ -54,14 +54,52 @@ def test_listeners_only_hear_their_token():
         feed, _ = make_feed()
         calls = []
         listener = lambda: calls.append(1)
-        await feed.watch("a", listener)
+        await feed.watch(["a"], listener)
         feed.handle(json.dumps(book_event("b", "0.4")))
         assert calls == []
         feed.handle(json.dumps(book_event("a", "0.4")))
         assert calls == [1]
-        await feed.unwatch("a", listener)
+        await feed.unwatch(["a"], listener)
         feed.handle(json.dumps(book_event("a", "0.4")))
         assert calls == [1]
+
+    asyncio.run(scenario())
+
+
+def test_quotes_cover_only_tokens_with_books():
+    feed, _ = make_feed()
+    feed.handle(json.dumps([book_event("a", "0.4")]))
+    assert feed.quotes(["a", "missing"]) == {"a": {"bid": 0.4, "ask": 0.9}}
+
+
+def test_watching_many_tokens_subscribes_once():
+    async def scenario():
+        received = []
+        ready = asyncio.Event()
+
+        async def server(socket):
+            async for raw in socket:
+                if raw != "PING":
+                    received.append(json.loads(raw))
+                    if len(received) == 2:
+                        ready.set()
+
+        async with websockets.serve(server, "127.0.0.1", 0) as listening:
+            port = listening.sockets[0].getsockname()[1]
+            feed, _ = make_feed(f"ws://127.0.0.1:{port}")
+            await feed.set_universe({"u"})
+            runner = asyncio.create_task(feed.run())
+            async with asyncio.timeout(5):
+                while not feed.connected:
+                    await asyncio.sleep(0.01)
+                listener = lambda: None
+                await feed.watch(["a", "b", "a"], listener)
+                await ready.wait()
+            assert received[1] == {"assets_ids": ["a", "b"], "operation": "subscribe"}
+            await feed.unwatch(["a", "b", "a"], listener)
+            assert feed.token_count == 1
+            runner.cancel()
+            await asyncio.gather(runner, return_exceptions=True)
 
     asyncio.run(scenario())
 
@@ -91,7 +129,7 @@ def test_reconnects_resubscribes_and_tracks_changes():
             port = listening.sockets[0].getsockname()[1]
             feed, events = make_feed(f"ws://127.0.0.1:{port}")
             statuses: list[bool] = []
-            await feed.watch("a", lambda: statuses.append(feed.connected))
+            await feed.watch(["a"], lambda: statuses.append(feed.connected))
             await feed.set_universe({"b"})
             runner = asyncio.create_task(feed.run())
 

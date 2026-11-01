@@ -18,6 +18,12 @@ class Book:
         if timestamp is not None:
             self.timestamp = timestamp
 
+    def quote(self) -> dict:
+        return {
+            "bid": max(map(float, self.bids), default=None),
+            "ask": min(map(float, self.asks), default=None),
+        }
+
     def view(self, depth: int = 50) -> dict:
         return {
             "bids": _levels(self.bids, reverse=True)[:depth],

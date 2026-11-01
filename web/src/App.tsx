@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
+import { AppStorePanel, findApp, parseAppStoreEvent } from "./AppStorePanel";
 import {
+  fetchAppChart,
   fetchEvent,
   fetchEvents,
   fetchHistory,
@@ -13,6 +15,7 @@ import { OrderBook } from "./OrderBook";
 import { PriceChart } from "./PriceChart";
 import { useBook } from "./useBook";
 import { usePolling } from "./usePolling";
+import { useQuotes, type Quote } from "./useQuotes";
 
 const INTERVALS: Interval[] = ["1d", "1w", "1m", "max"];
 
@@ -20,14 +23,14 @@ function flip(price: number | null): number | null {
   return price === null ? null : 1 - price;
 }
 
-function quote(market: Market, outcome: number) {
-  if (outcome === 0) {
-    return { price: market.price, bid: market.bestBid, ask: market.bestAsk, last: market.lastPrice };
-  }
+function quote(market: Market, outcome: number, live?: Quote) {
+  const bid = live ? live.bid : market.bestBid;
+  const ask = live ? live.ask : market.bestAsk;
+  if (outcome === 0) return { price: market.price, bid, ask, last: market.lastPrice };
   return {
     price: flip(market.price),
-    bid: flip(market.bestAsk),
-    ask: flip(market.bestBid),
+    bid: flip(ask),
+    ask: flip(bid),
     last: flip(market.lastPrice),
   };
 }
@@ -66,12 +69,23 @@ export function App() {
   const token = market?.tokens[outcome] ?? null;
 
   const book = useBook(token);
+  const quotes = useQuotes(
+    event && event.markets.length > 1 ? event.markets.map((candidate) => candidate.tokens[0]) : [],
+  );
   const historyKey = token && `${token}:${interval}`;
   const history = usePolling(
     (signal) => fetchHistory(token!, interval, signal),
     historyKey,
     60_000,
   );
+
+  const appStore = event ? parseAppStoreEvent(event.title) : null;
+  const appChart = usePolling(
+    (signal) => fetchAppChart(appStore!.chart, signal),
+    appStore?.chart ?? null,
+    60_000,
+  );
+  const rankColumn = appChart.data !== null;
 
   const selectEvent = (next: MarketEvent) => {
     setSelected(next);
@@ -175,8 +189,9 @@ export function App() {
             </div>
             {event.markets.length > 1 && (
               <div className="outcomes">
-                <div className="outcome-row outcome-head">
+                <div className={`outcome-row outcome-head ${rankColumn ? "with-rank" : ""}`}>
                   <span>Outcome</span>
+                  {rankColumn && <span>Rank</span>}
                   <span>{market.outcomes[outcome]}</span>
                   <span>Bid</span>
                   <span>Ask</span>
@@ -184,14 +199,17 @@ export function App() {
                 </div>
                 {event.markets.map((candidate) => {
                   const active = candidate.id === market.id;
-                  const row = quote(candidate, outcome);
+                  const row = quote(candidate, outcome, quotes[candidate.tokens[0]]);
                   return (
                     <button
-                      className={`outcome-row ${active ? "active" : ""}`}
+                      className={`outcome-row ${active ? "active" : ""} ${rankColumn ? "with-rank" : ""}`}
                       key={candidate.id}
                       onClick={() => selectMarket(candidate)}
                     >
                       <span>{candidate.label}</span>
+                      {rankColumn && (
+                        <span>{findApp(appChart.data!.apps, candidate.label)?.rank ?? "–"}</span>
+                      )}
                       <span>{cents(row.price)}</span>
                       <span>{cents(active && book.data ? bestBid : row.bid)}</span>
                       <span>{cents(active && book.data ? bestAsk : row.ask)}</span>
@@ -218,13 +236,23 @@ export function App() {
                 ))}
               </div>
             </div>
-            <div className="chart-wrap">
-              <PriceChart points={history.data ?? []} resetKey={historyKey ?? ""} />
-              {history.error && !history.data && (
-                <p className="message overlay">Couldn't load history: {history.error}</p>
-              )}
-              {history.data?.length === 0 && (
-                <p className="message overlay">No price history for this range</p>
+            <div className="chart-row">
+              <div className="chart-wrap">
+                <PriceChart points={history.data ?? []} resetKey={historyKey ?? ""} />
+                {history.error && !history.data && (
+                  <p className="message overlay">Couldn't load history: {history.error}</p>
+                )}
+                {history.data?.length === 0 && (
+                  <p className="message overlay">No price history for this range</p>
+                )}
+              </div>
+              {appStore && (
+                <AppStorePanel
+                  chart={appChart.data}
+                  error={appChart.error}
+                  labels={event.markets.map((candidate) => candidate.label)}
+                  targetRank={appStore.rank}
+                />
               )}
             </div>
           </>
