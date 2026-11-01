@@ -17,6 +17,7 @@ from polymarket_terminal.universe import refresh_universe
 
 FEED_URL = "wss://ws-subscriptions-clob.polymarket.com/ws/market"
 DATA_DIR = Path(os.environ.get("DATA_DIR", Path(__file__).parents[2] / "data" / "raw"))
+RECORD_DATA = os.environ.get("RECORD_DATA") == "1"
 RECORD_MARKETS = int(os.environ.get("RECORD_MARKETS", "50"))
 MIN_FREE_GB = float(os.environ.get("MIN_FREE_GB", "5"))
 UNIVERSE_REFRESH_SECONDS = 600
@@ -29,24 +30,26 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    recorder = Recorder(DATA_DIR, min_free_bytes=int(MIN_FREE_GB * 1024**3))
-    feed = Feed(FEED_URL, recorder.add)
+    recorder = Recorder(DATA_DIR, min_free_bytes=int(MIN_FREE_GB * 1024**3)) if RECORD_DATA else None
+    feed = Feed(FEED_URL, recorder.add if recorder else lambda _received, _event: None)
     app.state.recorder = recorder
     app.state.feed = feed
     client = httpx.AsyncClient(timeout=20)
     app.state.app_store = AppStoreCharts(client)
-    tasks = [
-        asyncio.create_task(feed.run()),
-        asyncio.create_task(recorder.run()),
-        asyncio.create_task(
-            refresh_universe(feed.set_universe, RECORD_MARKETS, UNIVERSE_REFRESH_SECONDS)
-        ),
-    ]
+    tasks = [asyncio.create_task(feed.run())]
+    if recorder:
+        tasks.append(asyncio.create_task(recorder.run()))
+        tasks.append(
+            asyncio.create_task(
+                refresh_universe(feed.set_universe, RECORD_MARKETS, UNIVERSE_REFRESH_SECONDS)
+            )
+        )
     yield
     for task in tasks:
         task.cancel()
     await asyncio.gather(*tasks, return_exceptions=True)
-    await recorder.flush()
+    if recorder:
+        await recorder.flush()
     await client.aclose()
 
 
@@ -56,18 +59,23 @@ app = FastAPI(lifespan=lifespan)
 @app.get("/health")
 def health() -> dict:
     feed: Feed = app.state.feed
-    recorder: Recorder = app.state.recorder
-    return {
+    recorder: Recorder | None = app.state.recorder
+    status = {
         "connected": feed.connected,
         "reconnects": feed.reconnects,
         "tokens": feed.token_count,
         "books": len(feed.books),
-        "rows_written": recorder.rows_written,
-        "rows_buffered": recorder.buffered,
-        "rows_dropped": recorder.rows_dropped,
-        "files_written": recorder.files_written,
-        "recorder_error": recorder.last_error,
+        "recording": recorder is not None,
     }
+    if recorder:
+        status |= {
+            "rows_written": recorder.rows_written,
+            "rows_buffered": recorder.buffered,
+            "rows_dropped": recorder.rows_dropped,
+            "files_written": recorder.files_written,
+            "recorder_error": recorder.last_error,
+        }
+    return status
 
 
 @app.get("/api/app-store/{chart}")

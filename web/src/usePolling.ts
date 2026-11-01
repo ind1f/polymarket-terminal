@@ -6,11 +6,12 @@ export function usePolling<T>(
   load: (signal: AbortSignal) => Promise<T>,
   key: string | null,
   intervalMs: number,
+  keepData = false,
 ): State<T> {
   const [state, setState] = useState<State<T>>({ data: null, error: null });
 
   useEffect(() => {
-    setState({ data: null, error: null });
+    if (!keepData) setState({ data: null, error: null });
     if (key === null) return;
 
     const controller = new AbortController();

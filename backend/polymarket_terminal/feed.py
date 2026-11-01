@@ -82,6 +82,8 @@ class Feed:
         desired = self._desired()
         if desired:
             self._has_tokens.set()
+        else:
+            self._has_tokens.clear()
         if self._socket is None:
             return
         added = desired - self._subscribed

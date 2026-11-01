@@ -72,9 +72,15 @@ type RawEvent = {
   markets?: RawMarket[];
 };
 
+class HttpError extends Error {
+  constructor(readonly status: number) {
+    super(`Request failed: ${status}`);
+  }
+}
+
 async function getJson<T>(url: string, signal: AbortSignal): Promise<T> {
   const response = await fetch(url, { signal });
-  if (!response.ok) throw new Error(`Request failed: ${response.status}`);
+  if (!response.ok) throw new HttpError(response.status);
   return response.json() as Promise<T>;
 }
 
@@ -125,6 +131,22 @@ export async function fetchEvents(signal: AbortSignal): Promise<MarketEvent[]> {
 
 export async function fetchEvent(id: string, signal: AbortSignal): Promise<MarketEvent> {
   return toEvent(await getJson<RawEvent>(`/api/gamma/events/${id}`, signal));
+}
+
+export async function fetchWatchedEvents(
+  entries: { id: string; title: string }[],
+  signal: AbortSignal,
+): Promise<MarketEvent[]> {
+  return Promise.all(
+    entries.map((entry) =>
+      fetchEvent(entry.id, signal).catch((error) => {
+        if (error instanceof HttpError && error.status === 404) {
+          return toEvent({ id: entry.id, title: entry.title });
+        }
+        throw error;
+      }),
+    ),
+  );
 }
 
 export async function searchEvents(query: string, signal: AbortSignal): Promise<MarketEvent[]> {

@@ -104,6 +104,36 @@ def test_watching_many_tokens_subscribes_once():
     asyncio.run(scenario())
 
 
+def test_waits_for_tokens_again_after_last_watcher_leaves():
+    async def scenario():
+        connections = 0
+
+        async def server(socket):
+            nonlocal connections
+            connections += 1
+            await socket.recv()
+
+        async with websockets.serve(server, "127.0.0.1", 0) as listening:
+            port = listening.sockets[0].getsockname()[1]
+            feed, _ = make_feed(f"ws://127.0.0.1:{port}")
+            runner = asyncio.create_task(feed.run())
+            await asyncio.sleep(0.05)
+            assert connections == 0
+
+            listener = lambda: None
+            await feed.watch(["a"], listener)
+            async with asyncio.timeout(5):
+                while connections == 0:
+                    await asyncio.sleep(0.01)
+            await feed.unwatch(["a"], listener)
+            await asyncio.sleep(0.3)
+            assert connections == 1
+            runner.cancel()
+            await asyncio.gather(runner, return_exceptions=True)
+
+    asyncio.run(scenario())
+
+
 def test_reconnects_resubscribes_and_tracks_changes():
     async def scenario():
         received: list[list[dict]] = []

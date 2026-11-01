@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type DragEvent } from "react";
 import { AppStorePanel, findApp, parseAppStoreEvent } from "./AppStorePanel";
 import {
   fetchAppChart,
   fetchEvent,
   fetchEvents,
   fetchHistory,
+  fetchWatchedEvents,
   searchEvents,
   type Interval,
   type Market,
@@ -16,8 +17,16 @@ import { PriceChart } from "./PriceChart";
 import { useBook } from "./useBook";
 import { usePolling } from "./usePolling";
 import { useQuotes, type Quote } from "./useQuotes";
+import { useWatchlist } from "./useWatchlist";
 
 const INTERVALS: Interval[] = ["1d", "1w", "1m", "max"];
+
+type View = "top" | "watchlist";
+
+const VIEWS: { id: View; label: string }[] = [
+  { id: "top", label: "Top" },
+  { id: "watchlist", label: "Watchlist" },
+];
 
 function flip(price: number | null): number | null {
   return price === null ? null : 1 - price;
@@ -35,13 +44,18 @@ function quote(market: Market, outcome: number, live?: Quote) {
   };
 }
 
-function topLine(event: MarketEvent): string {
+function topLine(event: MarketEvent, loading: boolean): string {
   const top = event.markets[0];
+  if (!top) return loading ? "Loading…" : "No open markets";
   return event.markets.length > 1 ? `${top.label} ${cents(top.price)}` : cents(top.price);
 }
 
 export function App() {
   const events = usePolling(fetchEvents, "events", 300_000);
+  const watchlist = useWatchlist();
+  const [view, setView] = useState<View>("top");
+  const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [dropIndex, setDropIndex] = useState<number | null>(null);
   const [selected, setSelected] = useState<MarketEvent | null>(null);
   const [marketId, setMarketId] = useState<string | null>(null);
   const [outcome, setOutcome] = useState(0);
@@ -55,7 +69,23 @@ export function App() {
   }, [search]);
 
   const results = usePolling((signal) => searchEvents(query, signal), query || null, 30_000);
-  const list = query ? results : events;
+  const watchedKey = watchlist.entries.map((entry) => entry.id).join(",");
+  const watched = usePolling(
+    (signal) => fetchWatchedEvents(watchlist.entries, signal),
+    view === "watchlist" && watchedKey ? watchedKey : null,
+    30_000,
+    true,
+  );
+  const watchedRows = {
+    data: watchlist.entries.map(
+      (entry) =>
+        watched.data?.find((candidate) => candidate.id === entry.id) ??
+        ({ ...entry, volume24h: 0, liquidity: 0, endDate: null, markets: [] } as MarketEvent),
+    ),
+    error: watched.error,
+  };
+  const views = { top: events, watchlist: watchedRows };
+  const list = query ? results : views[view];
   const initial = selected ?? events.data?.[0] ?? null;
   const live = usePolling(
     (signal) => fetchEvent(initial!.id, signal),
@@ -89,13 +119,33 @@ export function App() {
 
   const selectEvent = (next: MarketEvent) => {
     setSelected(next);
-    setMarketId(next.markets[0].id);
+    setMarketId(next.markets[0]?.id ?? null);
     setOutcome(0);
   };
 
   const selectMarket = (next: Market) => {
     setSelected(event);
     setMarketId(next.id);
+  };
+
+  const reorderable = view === "watchlist" && !search;
+
+  const trackDrop = (dragEvent: DragEvent<HTMLDivElement>, index: number) => {
+    if (draggedId === null) return;
+    dragEvent.preventDefault();
+    const { top, height } = dragEvent.currentTarget.getBoundingClientRect();
+    setDropIndex(dragEvent.clientY < top + height / 2 ? index : index + 1);
+  };
+
+  const finishDrag = () => {
+    setDraggedId(null);
+    setDropIndex(null);
+  };
+
+  const selectView = (next: View) => {
+    setView(next);
+    setSearch("");
+    setQuery("");
   };
 
   const bestBid = book.data?.bids[0]?.price ?? null;
@@ -114,6 +164,17 @@ export function App() {
       </header>
 
       <aside className="panel markets">
+        <div className="tabs view-tabs" role="group" aria-label="Market list">
+          {VIEWS.map(({ id, label }) => (
+            <button
+              key={id}
+              className={id === view && !search ? "active" : ""}
+              onClick={() => selectView(id)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
         <input
           className="search"
           type="search"
@@ -127,27 +188,88 @@ export function App() {
             <p className="message">Couldn't load markets: {list.error}</p>
           )}
           {!list.data && !list.error && <p className="message">Loading markets…</p>}
-          {list.data?.length === 0 && <p className="message">No matches</p>}
-          {list.data?.map((candidate) => (
-            <button
-              className={`market-row ${candidate.id === event?.id ? "active" : ""}`}
-              key={candidate.id}
-              onClick={() => selectEvent(candidate)}
-            >
-              <span className="market-question">{candidate.title}</span>
-              <span className="market-meta">
-                <span className="market-top">{topLine(candidate)}</span>
-                <span className="muted market-volume">{dollars(candidate.volume24h)} 24h</span>
-              </span>
-            </button>
-          ))}
+          {list.data?.length === 0 && (
+            <p className="message">
+              {view === "watchlist" && !query ? "Star a market to add it here" : "No matches"}
+            </p>
+          )}
+          {list.data?.map((candidate, index) => {
+            const starred = watchlist.has(candidate.id);
+            const dropAbove = dropIndex === index;
+            const dropBelow = dropIndex === index + 1 && index === list.data!.length - 1;
+            return (
+              <div
+                className={[
+                  "market-row",
+                  candidate.id === event?.id ? "active" : "",
+                  reorderable ? "reorderable" : "",
+                  candidate.id === draggedId ? "dragging" : "",
+                  dropAbove ? "drop-above" : "",
+                  dropBelow ? "drop-below" : "",
+                ].join(" ")}
+                key={candidate.id}
+                draggable={reorderable}
+                onDragStart={(dragEvent) => {
+                  dragEvent.dataTransfer.effectAllowed = "move";
+                  dragEvent.dataTransfer.setData("text/plain", candidate.title);
+                  setDraggedId(candidate.id);
+                }}
+                onDragOver={(dragEvent) => trackDrop(dragEvent, index)}
+                onDrop={(dragEvent) => {
+                  dragEvent.preventDefault();
+                  if (draggedId !== null && dropIndex !== null) {
+                    watchlist.move(draggedId, dropIndex);
+                  }
+                  finishDrag();
+                }}
+                onDragEnd={finishDrag}
+                onKeyDown={(keyEvent) => {
+                  if (!reorderable || !keyEvent.altKey) return;
+                  if (keyEvent.key !== "ArrowUp" && keyEvent.key !== "ArrowDown") return;
+                  keyEvent.preventDefault();
+                  const target = keyEvent.key === "ArrowUp" ? index - 1 : index + 2;
+                  if (target >= 0 && target <= list.data!.length) {
+                    watchlist.move(candidate.id, target);
+                  }
+                }}
+              >
+                <button className="market-open" onClick={() => selectEvent(candidate)}>
+                  <span className="market-question">{candidate.title}</span>
+                  <span className="market-meta">
+                    <span className="market-top">
+                      {topLine(candidate, !watched.data?.some(({ id }) => id === candidate.id))}
+                    </span>
+                    <span className="muted market-volume">{dollars(candidate.volume24h)} 24h</span>
+                  </span>
+                </button>
+                <button
+                  className={`star ${starred ? "on" : ""}`}
+                  aria-label={starred ? "Remove from watchlist" : "Add to watchlist"}
+                  aria-pressed={starred}
+                  onClick={() => watchlist.toggle(candidate)}
+                >
+                  {starred ? "★" : "☆"}
+                </button>
+              </div>
+            );
+          })}
         </div>
       </aside>
 
       <main className="panel detail">
         {event && market ? (
           <>
-            <h1>{event.title}</h1>
+            <div className="detail-title">
+              <h1>{event.title}</h1>
+              <button
+                className={`star ${watchlist.has(event.id) ? "on" : ""}`}
+                aria-label={watchlist.has(event.id) ? "Remove from watchlist" : "Add to watchlist"}
+                aria-pressed={watchlist.has(event.id)}
+                onClick={() => watchlist.toggle(event)}
+              >
+                {watchlist.has(event.id) ? "★" : "☆"}
+              </button>
+            </div>
             <div className="stats-row">
               <dl className="stats">
                 <div>
@@ -257,7 +379,7 @@ export function App() {
             </div>
           </>
         ) : (
-          <p className="message">Select a market</p>
+          <p className="message">{event ? "No open markets in this event" : "Select a market"}</p>
         )}
       </main>
 

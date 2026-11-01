@@ -96,15 +96,72 @@ input {
   overflow-y: auto;
 }
 
+.view-tabs {
+  padding: 10px 10px 0;
+}
+
+.view-tabs button {
+  flex: 1;
+}
+
 .market-row {
-  display: block;
-  width: 100%;
-  padding: 9px 12px;
-  border: 0;
+  display: flex;
+  align-items: flex-start;
   border-bottom: 1px solid var(--line);
+}
+
+.market-row.reorderable .market-open {
+  cursor: grab;
+}
+
+.market-row.dragging {
+  opacity: 0.4;
+}
+
+.market-row.drop-above {
+  box-shadow: inset 0 2px var(--text);
+}
+
+.market-row.drop-below {
+  box-shadow: inset 0 -2px var(--text);
+}
+
+.market-open {
+  flex: 1;
+  min-width: 0;
+  padding: 9px 0 9px 12px;
+  border: 0;
   background: none;
   text-align: left;
   cursor: pointer;
+}
+
+.star {
+  flex: none;
+  padding: 7px 10px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.3;
+  cursor: pointer;
+}
+
+.star:hover,
+.star.on {
+  color: var(--text);
+}
+
+.detail-title {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.detail-title .star {
+  padding: 0 2px;
+  font-size: 18px;
 }
 
 .market-row:hover {
