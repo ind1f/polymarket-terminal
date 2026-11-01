@@ -1,12 +1,22 @@
 export type Market = {
   id: string;
-  question: string;
+  label: string;
   outcomes: string[];
   tokens: string[];
+  price: number | null;
+  bestBid: number | null;
+  bestAsk: number | null;
   lastPrice: number | null;
+  volume24h: number;
+};
+
+export type MarketEvent = {
+  id: string;
+  title: string;
   volume24h: number;
   liquidity: number;
   endDate: string | null;
+  markets: Market[];
 };
 
 export type Level = { price: number; size: number };
@@ -26,14 +36,25 @@ const FIDELITY: Record<Interval, number> = { "1d": 5, "1w": 30, "1m": 60, max: 7
 type RawMarket = {
   id: string;
   question: string;
+  groupItemTitle?: string;
   outcomes?: string;
+  outcomePrices?: string;
   clobTokenIds?: string;
+  bestBid?: number;
+  bestAsk?: number;
   lastTradePrice?: number;
   volume24hr?: number;
-  liquidityNum?: number;
-  endDate?: string;
   acceptingOrders?: boolean;
   enableOrderBook?: boolean;
+};
+
+type RawEvent = {
+  id: string;
+  title: string;
+  volume24hr?: number;
+  liquidity?: number;
+  endDate?: string;
+  markets?: RawMarket[];
 };
 
 type RawLevel = { price: string; size: string };
@@ -45,15 +66,31 @@ async function getJson<T>(url: string, signal: AbortSignal): Promise<T> {
 }
 
 function toMarket(raw: RawMarket): Market {
+  const prices: string[] = JSON.parse(raw.outcomePrices ?? "[]");
   return {
     id: raw.id,
-    question: raw.question,
+    label: raw.groupItemTitle || raw.question,
     outcomes: JSON.parse(raw.outcomes ?? "[]"),
     tokens: JSON.parse(raw.clobTokenIds ?? "[]"),
+    price: prices[0] ? Number(prices[0]) : null,
+    bestBid: raw.bestBid ?? null,
+    bestAsk: raw.bestAsk ?? null,
     lastPrice: raw.lastTradePrice ?? null,
     volume24h: raw.volume24hr ?? 0,
-    liquidity: raw.liquidityNum ?? 0,
+  };
+}
+
+function toEvent(raw: RawEvent): MarketEvent {
+  return {
+    id: raw.id,
+    title: raw.title,
+    volume24h: raw.volume24hr ?? 0,
+    liquidity: raw.liquidity ?? 0,
     endDate: raw.endDate ?? null,
+    markets: (raw.markets ?? [])
+      .filter(isTradable)
+      .map(toMarket)
+      .sort((a, b) => (b.price ?? 0) - (a.price ?? 0)),
   };
 }
 
@@ -65,7 +102,7 @@ function toLevels(levels: RawLevel[]): Level[] {
   return levels.map((level) => ({ price: Number(level.price), size: Number(level.size) }));
 }
 
-export async function fetchMarkets(signal: AbortSignal): Promise<Market[]> {
+export async function fetchEvents(signal: AbortSignal): Promise<MarketEvent[]> {
   const params = new URLSearchParams({
     active: "true",
     closed: "false",
@@ -73,32 +110,25 @@ export async function fetchMarkets(signal: AbortSignal): Promise<Market[]> {
     order: "volume24hr",
     ascending: "false",
   });
-  const raw = await getJson<RawMarket[]>(`/api/gamma/markets?${params}`, signal);
-  return raw
-    .filter(isTradable)
-    .map(toMarket);
+  const raw = await getJson<RawEvent[]>(`/api/gamma/events?${params}`, signal);
+  return raw.map(toEvent).filter((event) => event.markets.length > 0);
 }
 
-export async function fetchMarket(id: string, signal: AbortSignal): Promise<Market> {
-  return toMarket(await getJson<RawMarket>(`/api/gamma/markets/${id}`, signal));
+export async function fetchEvent(id: string, signal: AbortSignal): Promise<MarketEvent> {
+  return toEvent(await getJson<RawEvent>(`/api/gamma/events/${id}`, signal));
 }
 
-export async function searchMarkets(query: string, signal: AbortSignal): Promise<Market[]> {
+export async function searchEvents(query: string, signal: AbortSignal): Promise<MarketEvent[]> {
   const params = new URLSearchParams({
     q: query,
     limit_per_type: "20",
     events_status: "active",
   });
-  const raw = await getJson<{ events?: { markets?: RawMarket[] }[] }>(
-    `/api/gamma/public-search?${params}`,
-    signal,
-  );
+  const raw = await getJson<{ events?: RawEvent[] }>(`/api/gamma/public-search?${params}`, signal);
   return (raw.events ?? [])
-    .flatMap((event) => event.markets ?? [])
-    .filter(isTradable)
-    .map(toMarket)
-    .sort((a, b) => b.volume24h - a.volume24h)
-    .slice(0, 100);
+    .map(toEvent)
+    .filter((event) => event.markets.length > 0)
+    .sort((a, b) => b.volume24h - a.volume24h);
 }
 
 export async function fetchBook(token: string, signal: AbortSignal): Promise<Book> {

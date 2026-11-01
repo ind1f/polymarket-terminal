@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import {
   fetchBook,
+  fetchEvent,
+  fetchEvents,
   fetchHistory,
-  fetchMarket,
-  fetchMarkets,
-  searchMarkets,
+  searchEvents,
   type Interval,
   type Market,
+  type MarketEvent,
 } from "./api";
 import { cents, dollars } from "./format";
 import { OrderBook } from "./OrderBook";
@@ -15,9 +16,31 @@ import { usePolling } from "./usePolling";
 
 const INTERVALS: Interval[] = ["1d", "1w", "1m", "max"];
 
+function flip(price: number | null): number | null {
+  return price === null ? null : 1 - price;
+}
+
+function quote(market: Market, outcome: number) {
+  if (outcome === 0) {
+    return { price: market.price, bid: market.bestBid, ask: market.bestAsk, last: market.lastPrice };
+  }
+  return {
+    price: flip(market.price),
+    bid: flip(market.bestAsk),
+    ask: flip(market.bestBid),
+    last: flip(market.lastPrice),
+  };
+}
+
+function topLine(event: MarketEvent): string {
+  const top = event.markets[0];
+  return event.markets.length > 1 ? `${top.label} ${cents(top.price)}` : cents(top.price);
+}
+
 export function App() {
-  const markets = usePolling(fetchMarkets, "markets", 30_000);
-  const [selected, setSelected] = useState<Market | null>(null);
+  const events = usePolling(fetchEvents, "events", 300_000);
+  const [selected, setSelected] = useState<MarketEvent | null>(null);
+  const [marketId, setMarketId] = useState<string | null>(null);
   const [outcome, setOutcome] = useState(0);
   const [interval, setInterval] = useState<Interval>("1w");
   const [search, setSearch] = useState("");
@@ -28,16 +51,18 @@ export function App() {
     return () => clearTimeout(timer);
   }, [search]);
 
-  const results = usePolling((signal) => searchMarkets(query, signal), query || null, 30_000);
-  const list = query ? results : markets;
+  const results = usePolling((signal) => searchEvents(query, signal), query || null, 30_000);
+  const list = query ? results : events;
+  const initial = selected ?? events.data?.[0] ?? null;
   const live = usePolling(
-    (signal) => fetchMarket(selected!.id, signal),
-    selected?.id ?? null,
+    (signal) => fetchEvent(initial!.id, signal),
+    initial?.id ?? null,
     30_000,
   );
 
+  const event = live.data?.id === initial?.id ? (live.data ?? initial) : initial;
   const market =
-    (live.data?.id === selected?.id ? live.data : selected) ?? markets.data?.[0] ?? null;
+    event?.markets.find((candidate) => candidate.id === marketId) ?? event?.markets[0] ?? null;
   const token = market?.tokens[outcome] ?? null;
 
   const book = usePolling((signal) => fetchBook(token!, signal), token, 2_000);
@@ -48,10 +73,19 @@ export function App() {
     60_000,
   );
 
+  const selectEvent = (next: MarketEvent) => {
+    setSelected(next);
+    setMarketId(next.markets[0].id);
+    setOutcome(0);
+  };
+
+  const selectMarket = (next: Market) => {
+    setSelected(event);
+    setMarketId(next.id);
+  };
+
   const bestBid = book.data?.bids[0]?.price ?? null;
   const bestAsk = book.data?.asks[0]?.price ?? null;
-  const lastPrice =
-    market?.lastPrice != null && outcome === 1 ? 1 - market.lastPrice : (market?.lastPrice ?? null);
 
   return (
     <div className="app">
@@ -72,7 +106,7 @@ export function App() {
           placeholder="Search all markets"
           aria-label="Search markets"
           value={search}
-          onChange={(event) => setSearch(event.target.value)}
+          onChange={(change) => setSearch(change.target.value)}
         />
         <div className="market-list">
           {list.error && !list.data && (
@@ -82,17 +116,14 @@ export function App() {
           {list.data?.length === 0 && <p className="message">No matches</p>}
           {list.data?.map((candidate) => (
             <button
-              className={`market-row ${candidate.id === market?.id ? "active" : ""}`}
+              className={`market-row ${candidate.id === event?.id ? "active" : ""}`}
               key={candidate.id}
-              onClick={() => {
-                setSelected(candidate);
-                setOutcome(0);
-              }}
+              onClick={() => selectEvent(candidate)}
             >
-              <span className="market-question">{candidate.question}</span>
+              <span className="market-question">{candidate.title}</span>
               <span className="market-meta">
-                <span>{cents(candidate.lastPrice)}</span>
-                <span className="muted">{dollars(candidate.volume24h)} 24h</span>
+                <span className="market-top">{topLine(candidate)}</span>
+                <span className="muted market-volume">{dollars(candidate.volume24h)} 24h</span>
               </span>
             </button>
           ))}
@@ -100,10 +131,36 @@ export function App() {
       </aside>
 
       <main className="panel detail">
-        {market ? (
+        {event && market ? (
           <>
-            <div className="detail-head">
-              <h1>{market.question}</h1>
+            <h1>{event.title}</h1>
+            <div className="stats-row">
+              <dl className="stats">
+                <div>
+                  <dt>Bid</dt>
+                  <dd>{cents(bestBid)}</dd>
+                </div>
+                <div>
+                  <dt>Ask</dt>
+                  <dd>{cents(bestAsk)}</dd>
+                </div>
+                <div>
+                  <dt>Last</dt>
+                  <dd>{cents(market && quote(market, outcome).last)}</dd>
+                </div>
+                <div>
+                  <dt>24h volume</dt>
+                  <dd>{dollars(event.volume24h)}</dd>
+                </div>
+                <div>
+                  <dt>Liquidity</dt>
+                  <dd>{dollars(event.liquidity)}</dd>
+                </div>
+                <div>
+                  <dt>Ends</dt>
+                  <dd>{event.endDate ? new Date(event.endDate).toLocaleDateString() : "–"}</dd>
+                </div>
+              </dl>
               <div className="tabs" role="group" aria-label="Outcome">
                 {market.outcomes.map((name, index) => (
                   <button
@@ -116,34 +173,39 @@ export function App() {
                 ))}
               </div>
             </div>
-            <dl className="stats">
-              <div>
-                <dt>Bid</dt>
-                <dd>{cents(bestBid)}</dd>
+            {event.markets.length > 1 && (
+              <div className="outcomes">
+                <div className="outcome-row outcome-head">
+                  <span>Outcome</span>
+                  <span>{market.outcomes[outcome]}</span>
+                  <span>Bid</span>
+                  <span>Ask</span>
+                  <span>24h</span>
+                </div>
+                {event.markets.map((candidate) => {
+                  const active = candidate.id === market.id;
+                  const row = quote(candidate, outcome);
+                  return (
+                    <button
+                      className={`outcome-row ${active ? "active" : ""}`}
+                      key={candidate.id}
+                      onClick={() => selectMarket(candidate)}
+                    >
+                      <span>{candidate.label}</span>
+                      <span>{cents(row.price)}</span>
+                      <span>{cents(active && book.data ? bestBid : row.bid)}</span>
+                      <span>{cents(active && book.data ? bestAsk : row.ask)}</span>
+                      <span>{dollars(candidate.volume24h)}</span>
+                    </button>
+                  );
+                })}
               </div>
-              <div>
-                <dt>Ask</dt>
-                <dd>{cents(bestAsk)}</dd>
-              </div>
-              <div>
-                <dt>Last</dt>
-                <dd>{cents(lastPrice)}</dd>
-              </div>
-              <div>
-                <dt>24h volume</dt>
-                <dd>{dollars(market.volume24h)}</dd>
-              </div>
-              <div>
-                <dt>Liquidity</dt>
-                <dd>{dollars(market.liquidity)}</dd>
-              </div>
-              <div>
-                <dt>Ends</dt>
-                <dd>{market.endDate ? new Date(market.endDate).toLocaleDateString() : "–"}</dd>
-              </div>
-            </dl>
+            )}
             <div className="chart-head">
-              <span className="muted">{market.outcomes[outcome]} price</span>
+              <span className="muted chart-label">
+                {event.markets.length > 1 && `${market.label}: `}
+                {market.outcomes[outcome]} price
+              </span>
               <div className="tabs" role="group" aria-label="Time range">
                 {INTERVALS.map((value) => (
                   <button
