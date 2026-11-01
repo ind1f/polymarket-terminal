@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import {
-  fetchBook,
   fetchEvent,
   fetchEvents,
   fetchHistory,
@@ -12,6 +11,7 @@ import {
 import { cents, dollars } from "./format";
 import { OrderBook } from "./OrderBook";
 import { PriceChart } from "./PriceChart";
+import { useBook } from "./useBook";
 import { usePolling } from "./usePolling";
 
 const INTERVALS: Interval[] = ["1d", "1w", "1m", "max"];
@@ -65,7 +65,7 @@ export function App() {
     event?.markets.find((candidate) => candidate.id === marketId) ?? event?.markets[0] ?? null;
   const token = market?.tokens[outcome] ?? null;
 
-  const book = usePolling((signal) => fetchBook(token!, signal), token, 2_000);
+  const book = useBook(token);
   const historyKey = token && `${token}:${interval}`;
   const history = usePolling(
     (signal) => fetchHistory(token!, interval, signal),
@@ -94,8 +94,8 @@ export function App() {
         <span className="badge">Read-only</span>
         <span className="muted topbar-status">
           {book.error
-            ? `Book error: ${book.error}`
-            : book.data && `Book ${new Date(book.data.timestamp).toLocaleTimeString()}`}
+            ? book.error
+            : book.data && `Live, last change ${new Date(book.data.timestamp).toLocaleTimeString()}`}
         </span>
       </header>
 
@@ -235,7 +235,7 @@ export function App() {
 
       <aside className="panel book-panel">
         <h2>Order book</h2>
-        {book.error && !book.data && <p className="message">Couldn't load book: {book.error}</p>}
+        {book.error && !book.data && <p className="message">{book.error}</p>}
         {!book.data && !book.error && <p className="message">Loading book…</p>}
         {book.data && <OrderBook book={book.data} />}
       </aside>

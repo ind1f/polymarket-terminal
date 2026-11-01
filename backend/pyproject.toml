@@ -1,0 +1,21 @@
+[project]
+name = "polymarket-terminal"
+version = "0.1.0"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "fastapi",
+    "httpx",
+    "pyarrow",
+    "uvicorn",
+    "websockets",
+]
+
+[dependency-groups]
+dev = ["pytest"]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

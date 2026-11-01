@@ -57,8 +57,6 @@ type RawEvent = {
   markets?: RawMarket[];
 };
 
-type RawLevel = { price: string; size: string };
-
 async function getJson<T>(url: string, signal: AbortSignal): Promise<T> {
   const response = await fetch(url, { signal });
   if (!response.ok) throw new Error(`Request failed: ${response.status}`);
@@ -98,10 +96,6 @@ function isTradable(market: RawMarket): boolean {
   return Boolean(market.acceptingOrders && market.enableOrderBook && market.clobTokenIds);
 }
 
-function toLevels(levels: RawLevel[]): Level[] {
-  return levels.map((level) => ({ price: Number(level.price), size: Number(level.size) }));
-}
-
 export async function fetchEvents(signal: AbortSignal): Promise<MarketEvent[]> {
   const params = new URLSearchParams({
     active: "true",
@@ -129,19 +123,6 @@ export async function searchEvents(query: string, signal: AbortSignal): Promise<
     .map(toEvent)
     .filter((event) => event.markets.length > 0)
     .sort((a, b) => b.volume24h - a.volume24h);
-}
-
-export async function fetchBook(token: string, signal: AbortSignal): Promise<Book> {
-  const raw = await getJson<{
-    bids: RawLevel[];
-    asks: RawLevel[];
-    timestamp: string;
-  }>(`/api/clob/book?token_id=${token}`, signal);
-  return {
-    bids: toLevels(raw.bids).sort((a, b) => b.price - a.price),
-    asks: toLevels(raw.asks).sort((a, b) => a.price - b.price),
-    timestamp: Number(raw.timestamp),
-  };
 }
 
 export async function fetchHistory(
