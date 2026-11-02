@@ -26,7 +26,7 @@ export function PriceChart({ points, resetKey }: { points: PricePoint[]; resetKe
         fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
       },
       grid: { vertLines: { visible: false }, horzLines: { color: "#efefef" } },
-      rightPriceScale: { borderVisible: false },
+      rightPriceScale: { borderVisible: false, scaleMargins: { top: 0.04, bottom: 0.04 } },
       timeScale: { borderVisible: false, timeVisible: true },
     });
     series.current = instance.addSeries(LineSeries, {

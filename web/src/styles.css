@@ -119,8 +119,7 @@ input {
 }
 
 .market-row {
-  display: flex;
-  align-items: flex-start;
+  position: relative;
   border-bottom: 1px solid var(--line);
 }
 
@@ -141,9 +140,9 @@ input {
 }
 
 .market-open {
-  flex: 1;
-  min-width: 0;
-  padding: 9px 0 9px 12px;
+  display: block;
+  width: 100%;
+  padding: 9px 12px;
   border: 0;
   background: none;
   text-align: left;
@@ -189,6 +188,13 @@ input {
 
 .market-question {
   display: block;
+  padding-right: 22px;
+}
+
+.market-row > .star {
+  position: absolute;
+  top: 2px;
+  right: 2px;
 }
 
 .market-meta {
