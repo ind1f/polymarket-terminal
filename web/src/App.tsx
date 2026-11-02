@@ -5,15 +5,18 @@ import {
   fetchEvent,
   fetchEvents,
   fetchHistory,
+  fetchNewEvents,
+  fetchRandomEvents,
   fetchWatchedEvents,
   searchEvents,
   type Interval,
   type Market,
   type MarketEvent,
 } from "./api";
-import { cents, dollars } from "./format";
+import { age, cents, dollars } from "./format";
 import { OrderBook } from "./OrderBook";
 import { PriceChart } from "./PriceChart";
+import { Rules } from "./Rules";
 import { useBook } from "./useBook";
 import { usePolling } from "./usePolling";
 import { useQuotes, type Quote } from "./useQuotes";
@@ -21,11 +24,13 @@ import { useWatchlist } from "./useWatchlist";
 
 const INTERVALS: Interval[] = ["1d", "1w", "1m", "max"];
 
-type View = "top" | "watchlist";
+type View = "top" | "watchlist" | "new" | "random";
 
 const VIEWS: { id: View; label: string }[] = [
   { id: "top", label: "Top" },
   { id: "watchlist", label: "Watchlist" },
+  { id: "new", label: "New" },
+  { id: "random", label: "Random" },
 ];
 
 function flip(price: number | null): number | null {
@@ -56,6 +61,7 @@ export function App() {
   const [view, setView] = useState<View>("top");
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dropIndex, setDropIndex] = useState<number | null>(null);
+  const [shuffles, setShuffles] = useState(0);
   const [selected, setSelected] = useState<MarketEvent | null>(null);
   const [marketId, setMarketId] = useState<string | null>(null);
   const [outcome, setOutcome] = useState(0);
@@ -80,11 +86,26 @@ export function App() {
     data: watchlist.entries.map(
       (entry) =>
         watched.data?.find((candidate) => candidate.id === entry.id) ??
-        ({ ...entry, volume24h: 0, liquidity: 0, endDate: null, markets: [] } as MarketEvent),
+        ({
+          ...entry,
+          volume24h: 0,
+          liquidity: 0,
+          endDate: null,
+          createdAt: null,
+          rules: "",
+          resolutionSource: null,
+          markets: [],
+        } as MarketEvent),
     ),
     error: watched.error,
   };
-  const views = { top: events, watchlist: watchedRows };
+  const newEvents = usePolling(fetchNewEvents, view === "new" ? "new" : null, 120_000);
+  const randomEvents = usePolling(
+    fetchRandomEvents,
+    view === "random" ? `random-${shuffles}` : null,
+    null,
+  );
+  const views = { top: events, watchlist: watchedRows, new: newEvents, random: randomEvents };
   const list = query ? results : views[view];
   const initial = selected ?? events.data?.[0] ?? null;
   const live = usePolling(
@@ -183,6 +204,11 @@ export function App() {
           value={search}
           onChange={(change) => setSearch(change.target.value)}
         />
+        {view === "random" && !search && (
+          <button className="shuffle" onClick={() => setShuffles(shuffles + 1)}>
+            Shuffle
+          </button>
+        )}
         <div className="market-list">
           {list.error && !list.data && (
             <p className="message">Couldn't load markets: {list.error}</p>
@@ -239,7 +265,11 @@ export function App() {
                     <span className="market-top">
                       {topLine(candidate, !watched.data?.some(({ id }) => id === candidate.id))}
                     </span>
-                    <span className="muted market-volume">{dollars(candidate.volume24h)} 24h</span>
+                    <span className="muted market-volume">
+                      {view === "new" && !search && candidate.createdAt
+                        ? age(candidate.createdAt)
+                        : `${dollars(candidate.volume24h)} 24h`}
+                    </span>
                   </span>
                 </button>
                 <button
@@ -377,6 +407,10 @@ export function App() {
                 />
               )}
             </div>
+            <Rules
+              text={market.rules || event.rules}
+              source={market.resolutionSource ?? event.resolutionSource}
+            />
           </>
         ) : (
           <p className="message">{event ? "No open markets in this event" : "Select a market"}</p>

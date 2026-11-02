@@ -8,6 +8,8 @@ export type Market = {
   bestAsk: number | null;
   lastPrice: number | null;
   volume24h: number;
+  rules: string;
+  resolutionSource: string | null;
 };
 
 export type MarketEvent = {
@@ -16,6 +18,9 @@ export type MarketEvent = {
   volume24h: number;
   liquidity: number;
   endDate: string | null;
+  createdAt: string | null;
+  rules: string;
+  resolutionSource: string | null;
   markets: Market[];
 };
 
@@ -46,6 +51,11 @@ export type PricePoint = { time: number; value: number };
 
 export type Interval = "1d" | "1w" | "1m" | "max";
 
+const EXCLUDED_TAG_IDS = ["102169", "101757", "100639"];
+const RANDOM_BATCHES = 6;
+const RANDOM_BATCH_SIZE = 5;
+const RANDOM_MAX_OFFSET = 2000;
+
 const FIDELITY: Record<Interval, number> = { "1d": 5, "1w": 30, "1m": 60, max: 720 };
 
 type RawMarket = {
@@ -61,6 +71,8 @@ type RawMarket = {
   volume24hr?: number;
   acceptingOrders?: boolean;
   enableOrderBook?: boolean;
+  description?: string;
+  resolutionSource?: string;
 };
 
 type RawEvent = {
@@ -69,6 +81,9 @@ type RawEvent = {
   volume24hr?: number;
   liquidity?: number;
   endDate?: string;
+  createdAt?: string;
+  description?: string;
+  resolutionSource?: string;
   markets?: RawMarket[];
 };
 
@@ -96,6 +111,8 @@ function toMarket(raw: RawMarket): Market {
     bestAsk: raw.bestAsk ?? null,
     lastPrice: raw.lastTradePrice ?? null,
     volume24h: raw.volume24hr ?? 0,
+    rules: raw.description?.trim() ?? "",
+    resolutionSource: raw.resolutionSource?.trim() || null,
   };
 }
 
@@ -106,6 +123,9 @@ function toEvent(raw: RawEvent): MarketEvent {
     volume24h: raw.volume24hr ?? 0,
     liquidity: raw.liquidity ?? 0,
     endDate: raw.endDate ?? null,
+    createdAt: raw.createdAt ?? null,
+    rules: raw.description?.trim() ?? "",
+    resolutionSource: raw.resolutionSource?.trim() || null,
     markets: (raw.markets ?? [])
       .filter(isTradable)
       .map(toMarket)
@@ -127,6 +147,39 @@ export async function fetchEvents(signal: AbortSignal): Promise<MarketEvent[]> {
   });
   const raw = await getJson<RawEvent[]>(`/api/gamma/events?${params}`, signal);
   return raw.map(toEvent).filter((event) => event.markets.length > 0);
+}
+
+function discoveryParams(values: Record<string, string>): URLSearchParams {
+  const params = new URLSearchParams({ active: "true", closed: "false", ...values });
+  for (const id of EXCLUDED_TAG_IDS) params.append("exclude_tag_id", id);
+  return params;
+}
+
+export async function fetchNewEvents(signal: AbortSignal): Promise<MarketEvent[]> {
+  const params = discoveryParams({ limit: "50", order: "createdAt", ascending: "false" });
+  const raw = await getJson<RawEvent[]>(`/api/gamma/events?${params}`, signal);
+  return raw.map(toEvent).filter((event) => event.markets.length > 0);
+}
+
+export async function fetchRandomEvents(signal: AbortSignal): Promise<MarketEvent[]> {
+  const batches = await Promise.all(
+    Array.from({ length: RANDOM_BATCHES }, () => {
+      const params = discoveryParams({
+        limit: String(RANDOM_BATCH_SIZE),
+        offset: String(Math.floor(Math.random() * RANDOM_MAX_OFFSET)),
+        order: "createdAt",
+        ascending: String(Math.random() < 0.5),
+      });
+      return getJson<RawEvent[]>(`/api/gamma/events?${params}`, signal);
+    }),
+  );
+  const unique = new Map(batches.flat().map((event) => [event.id, event]));
+  return [...unique.values()]
+    .map(toEvent)
+    .filter((event) => event.markets.length > 0)
+    .map((event) => ({ event, order: Math.random() }))
+    .sort((a, b) => a.order - b.order)
+    .map(({ event }) => event);
 }
 
 export async function fetchEvent(id: string, signal: AbortSignal): Promise<MarketEvent> {

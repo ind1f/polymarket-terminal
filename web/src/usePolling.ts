@@ -5,7 +5,7 @@ type State<T> = { data: T | null; error: string | null };
 export function usePolling<T>(
   load: (signal: AbortSignal) => Promise<T>,
   key: string | null,
-  intervalMs: number,
+  intervalMs: number | null,
   keepData = false,
 ): State<T> {
   const [state, setState] = useState<State<T>>({ data: null, error: null });
@@ -27,7 +27,7 @@ export function usePolling<T>(
         const message = error instanceof Error ? error.message : "Request failed";
         setState((previous) => ({ data: previous.data, error: message }));
       }
-      timer = setTimeout(tick, intervalMs);
+      if (intervalMs !== null) timer = setTimeout(tick, intervalMs);
     };
 
     tick();

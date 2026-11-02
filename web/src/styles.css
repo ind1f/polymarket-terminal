@@ -102,6 +102,20 @@ input {
 
 .view-tabs button {
   flex: 1;
+  padding-inline: 4px;
+}
+
+.shuffle {
+  margin: 0 10px 10px;
+  padding: 3px 10px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: none;
+  cursor: pointer;
+}
+
+.shuffle:hover {
+  background: var(--raised);
 }
 
 .market-row {
@@ -190,6 +204,7 @@ input {
   display: flex;
   flex-direction: column;
   padding: 14px;
+  overflow-y: auto;
 }
 
 .detail-head {
@@ -274,6 +289,48 @@ h2 {
   white-space: nowrap;
 }
 
+.rules {
+  flex: none;
+  margin-top: 14px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+
+.rules-head {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 4px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.rules-head button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font-size: 11px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.rules-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.rules-text.clamped {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.rules-text a {
+  color: inherit;
+}
+
 .outcomes {
   flex: none;
   max-height: 32vh;
@@ -350,9 +407,9 @@ button.outcome-row:hover,
 
 .chart-row {
   display: flex;
-  flex: 1;
+  flex: 1 0 280px;
   gap: 14px;
-  min-height: 200px;
+  min-height: 280px;
 }
 
 .chart-wrap {
