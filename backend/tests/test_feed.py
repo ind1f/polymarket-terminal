@@ -31,8 +31,14 @@ def make_feed(url: str = "ws://unused") -> tuple[Feed, list[dict]]:
     return Feed(url, lambda _, event: events.append(event), max_backoff_seconds=0.05), events
 
 
-def test_handles_lists_single_events_pongs_and_garbage():
+def tracking(*tokens: str) -> tuple[Feed, list[dict]]:
     feed, events = make_feed()
+    asyncio.run(feed.watch(list(tokens), lambda: None))
+    return feed, events
+
+
+def test_handles_lists_single_events_pongs_and_garbage():
+    feed, events = tracking("a")
     feed.handle(json.dumps([book_event("a", "0.4")]))
     feed.handle(json.dumps(change_event("a")))
     feed.handle("PONG")
@@ -43,10 +49,28 @@ def test_handles_lists_single_events_pongs_and_garbage():
 
 
 def test_change_before_snapshot_is_recorded_but_not_applied():
-    feed, events = make_feed()
+    feed, events = tracking("a")
     feed.handle(json.dumps(change_event("a")))
     assert len(events) == 1
     assert feed.view("a")["book"] is None
+
+
+def test_snapshots_for_untracked_tokens_are_recorded_but_not_stored():
+    async def scenario():
+        feed, events = make_feed()
+        feed.handle(json.dumps([book_event("stray", "0.4")]))
+        assert "stray" not in feed.books
+        assert len(events) == 1
+
+        listener = lambda: None
+        await feed.watch(["a"], listener)
+        feed.handle(json.dumps([book_event("a", "0.4")]))
+        assert "a" in feed.books
+        await feed.unwatch(["a"], listener)
+        feed.handle(json.dumps([book_event("a", "0.5")]))
+        assert "a" not in feed.books
+
+    asyncio.run(scenario())
 
 
 def test_listeners_only_hear_their_token():
@@ -67,7 +91,7 @@ def test_listeners_only_hear_their_token():
 
 
 def test_quotes_cover_only_tokens_with_books():
-    feed, _ = make_feed()
+    feed, _ = tracking("a")
     feed.handle(json.dumps([book_event("a", "0.4")]))
     assert feed.quotes(["a", "missing"]) == {"a": {"bid": 0.4, "ask": 0.9}}
 

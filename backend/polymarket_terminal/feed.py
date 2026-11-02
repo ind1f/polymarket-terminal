@@ -84,6 +84,8 @@ class Feed:
             self._has_tokens.set()
         else:
             self._has_tokens.clear()
+        for token in [token for token in self.books if token not in desired]:
+            del self.books[token]
         if self._socket is None:
             return
         added = desired - self._subscribed
@@ -100,8 +102,6 @@ class Feed:
         except websockets.ConnectionClosed:
             return
         self._subscribed = desired
-        for token in removed:
-            self.books.pop(token, None)
 
     async def run(self) -> None:
         backoff = 1.0
@@ -171,6 +171,8 @@ class Feed:
         kind = event.get("event_type")
         if kind == "book":
             token = event["asset_id"]
+            if not self._tracks(token):
+                return
             self.books.setdefault(token, Book()).apply_snapshot(event)
             self._notify(token)
         elif kind == "price_change":
@@ -182,6 +184,9 @@ class Feed:
                     continue
                 book.apply_change(change, timestamp)
                 self._notify(token)
+
+    def _tracks(self, token: str) -> bool:
+        return token in self._universe or token in self._watch_counts
 
     def _notify(self, token: str) -> None:
         for listener in self._listeners.get(token, ()):
