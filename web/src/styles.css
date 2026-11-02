@@ -74,8 +74,53 @@ input {
 }
 
 .markets {
+  position: relative;
   display: flex;
   flex-direction: column;
+}
+
+.splitter {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 2;
+  width: 9px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.splitter-left {
+  right: -5px;
+}
+
+.splitter-right {
+  left: -5px;
+}
+
+.splitter::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 4px;
+  width: 1px;
+}
+
+.splitter:hover::after,
+.splitter:focus-visible::after,
+.resizing .splitter::after {
+  width: 2px;
+  background: var(--text);
+}
+
+.splitter:focus-visible {
+  outline: none;
+}
+
+.resizing,
+.resizing * {
+  cursor: col-resize !important;
+  user-select: none;
 }
 
 .search {
@@ -359,7 +404,7 @@ h2 {
 }
 
 .outcome-row.with-rank {
-  grid-template-columns: minmax(0, 1fr) 44px repeat(3, 70px) 80px;
+  grid-template-columns: minmax(0, 1fr) 52px repeat(3, 70px) 80px;
 }
 
 .outcome-row:last-child {
@@ -449,6 +494,12 @@ button.outcome-row:hover,
   font-weight: 400;
 }
 
+.app-panel-period {
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--line);
+  font-size: 11px;
+}
+
 .app-list {
   flex: 1;
   min-height: 0;
@@ -457,7 +508,6 @@ button.outcome-row:hover,
 
 .app-row {
   display: grid;
-  grid-template-columns: 30px minmax(0, 1fr) 40px 76px;
   gap: 6px;
   padding: 3px 10px;
   font-family: var(--mono);
@@ -496,6 +546,7 @@ button.outcome-row:hover,
 }
 
 .book-panel {
+  position: relative;
   display: flex;
   flex-direction: column;
 }

@@ -4,14 +4,12 @@ import os
 from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Literal
-
 import httpx
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import TypeAdapter, ValidationError
 
-from polymarket_terminal.appstore import AppStoreCharts
 from polymarket_terminal.feed import Feed
+from polymarket_terminal.rankings import CHARTS, FETCH_ERRORS, Rankings
 from polymarket_terminal.recorder import Recorder
 from polymarket_terminal.universe import refresh_universe
 
@@ -35,7 +33,7 @@ async def lifespan(app: FastAPI):
     app.state.recorder = recorder
     app.state.feed = feed
     client = httpx.AsyncClient(timeout=20)
-    app.state.app_store = AppStoreCharts(client)
+    app.state.rankings = Rankings(client)
     tasks = [asyncio.create_task(feed.run())]
     if recorder:
         tasks.append(asyncio.create_task(recorder.run()))
@@ -78,13 +76,15 @@ def health() -> dict:
     return status
 
 
-@app.get("/api/app-store/{chart}")
-async def app_store_chart(chart: Literal["free", "paid"]) -> dict:
-    charts: AppStoreCharts = app.state.app_store
+@app.get("/api/rankings/{chart_id}")
+async def ranking(chart_id: str) -> dict:
+    if chart_id not in CHARTS:
+        raise HTTPException(status_code=404, detail="Unknown chart")
+    rankings: Rankings = app.state.rankings
     try:
-        return await charts.get(chart)
-    except (httpx.HTTPError, AttributeError, KeyError, StopIteration, ValueError) as error:
-        raise HTTPException(status_code=502, detail="App Store unavailable") from error
+        return await rankings.get(chart_id)
+    except FETCH_ERRORS as error:
+        raise HTTPException(status_code=502, detail="Ranking source unavailable") from error
 
 
 async def run_until_disconnect(socket: WebSocket, send: Callable[[], Awaitable[None]]) -> None:

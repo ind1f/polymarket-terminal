@@ -1,12 +1,11 @@
 import { useEffect, useState, type DragEvent } from "react";
-import { AppStorePanel, findApp, parseAppStoreEvent } from "./AppStorePanel";
 import {
-  fetchAppChart,
   fetchEvent,
   fetchEvents,
   fetchHistory,
   fetchNewEvents,
   fetchRandomEvents,
+  fetchRanking,
   fetchWatchedEvents,
   searchEvents,
   type Interval,
@@ -16,8 +15,11 @@ import {
 import { age, cents, dollars } from "./format";
 import { OrderBook } from "./OrderBook";
 import { PriceChart } from "./PriceChart";
+import { findRow, parseRankingEvent, RankingPanel } from "./RankingPanel";
 import { Rules } from "./Rules";
+import { Splitter } from "./Splitter";
 import { useBook } from "./useBook";
+import { usePanelWidths } from "./usePanelWidths";
 import { usePolling } from "./usePolling";
 import { useQuotes, type Quote } from "./useQuotes";
 import { useWatchlist } from "./useWatchlist";
@@ -58,6 +60,7 @@ function topLine(event: MarketEvent, loading: boolean): string {
 export function App() {
   const events = usePolling(fetchEvents, "events", 300_000);
   const watchlist = useWatchlist();
+  const panels = usePanelWidths();
   const [view, setView] = useState<View>("top");
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dropIndex, setDropIndex] = useState<number | null>(null);
@@ -130,13 +133,13 @@ export function App() {
     60_000,
   );
 
-  const appStore = event ? parseAppStoreEvent(event.title) : null;
-  const appChart = usePolling(
-    (signal) => fetchAppChart(appStore!.chart, signal),
-    appStore?.chart ?? null,
+  const ranking = event ? parseRankingEvent(event.title) : null;
+  const rankChart = usePolling(
+    (signal) => fetchRanking(ranking!.chart, signal),
+    ranking?.chart ?? null,
     60_000,
   );
-  const rankColumn = appChart.data !== null;
+  const rankColumn = rankChart.data !== null && ranking !== null;
 
   const selectEvent = (next: MarketEvent) => {
     setSelected(next);
@@ -173,7 +176,12 @@ export function App() {
   const bestAsk = book.data?.asks[0]?.price ?? null;
 
   return (
-    <div className="app">
+    <div
+      className="app"
+      style={{
+        gridTemplateColumns: `${panels.widths.left}px minmax(0, 1fr) ${panels.widths.right}px`,
+      }}
+    >
       <header className="topbar">
         <strong>Polymarket Terminal</strong>
         <span className="badge">Read-only</span>
@@ -185,6 +193,12 @@ export function App() {
       </header>
 
       <aside className="panel markets">
+        <Splitter
+          side="left"
+          width={panels.widths.left}
+          label="Resize market list"
+          onResize={panels.resize}
+        />
         <div className="tabs view-tabs" role="group" aria-label="Market list">
           {VIEWS.map(({ id, label }) => (
             <button
@@ -343,7 +357,7 @@ export function App() {
               <div className="outcomes">
                 <div className={`outcome-row outcome-head ${rankColumn ? "with-rank" : ""}`}>
                   <span>Outcome</span>
-                  {rankColumn && <span>Rank</span>}
+                  {rankColumn && <span>{rankChart.data!.rank_label}</span>}
                   <span>{market.outcomes[outcome]}</span>
                   <span>Bid</span>
                   <span>Ask</span>
@@ -360,7 +374,10 @@ export function App() {
                     >
                       <span>{candidate.label}</span>
                       {rankColumn && (
-                        <span>{findApp(appChart.data!.apps, candidate.label)?.rank ?? "–"}</span>
+                        <span>
+                          {findRow(rankChart.data!.rows, candidate.label, ranking!.prefixMatch)
+                            ?.rank ?? "–"}
+                        </span>
                       )}
                       <span>{cents(row.price)}</span>
                       <span>{cents(active && book.data ? bestBid : row.bid)}</span>
@@ -398,12 +415,12 @@ export function App() {
                   <p className="message overlay">No price history for this range</p>
                 )}
               </div>
-              {appStore && (
-                <AppStorePanel
-                  chart={appChart.data}
-                  error={appChart.error}
+              {ranking && (
+                <RankingPanel
+                  chart={rankChart.data}
+                  error={rankChart.error}
                   labels={event.markets.map((candidate) => candidate.label)}
-                  targetRank={appStore.rank}
+                  ranking={ranking}
                 />
               )}
             </div>
@@ -418,6 +435,12 @@ export function App() {
       </main>
 
       <aside className="panel book-panel">
+        <Splitter
+          side="right"
+          width={panels.widths.right}
+          label="Resize order book"
+          onResize={panels.resize}
+        />
         <h2>Order book</h2>
         {book.error && !book.data && <p className="message">{book.error}</p>}
         {!book.data && !book.error && <p className="message">Loading book…</p>}

@@ -32,19 +32,18 @@ export type Book = {
   timestamp: number;
 };
 
-export type AppChartEntry = {
-  rank: number;
-  id: string;
-  name: string;
-  rating: number | null;
-  ratings: number | null;
-};
+export type RankingColumn = { label: string; kind: "rating" | "count" | "rank" };
 
-export type AppChart = {
-  chart: "free" | "paid";
+export type RankingRow = { rank: number; name: string; values: (number | null)[] };
+
+export type RankingChart = {
+  id: string;
   title: string;
+  period: string | null;
+  rank_label: string;
+  columns: RankingColumn[];
+  rows: RankingRow[];
   fetched_ms: number;
-  apps: AppChartEntry[];
 };
 
 export type PricePoint = { time: number; value: number };
@@ -215,8 +214,8 @@ export async function searchEvents(query: string, signal: AbortSignal): Promise<
     .sort((a, b) => b.volume24h - a.volume24h);
 }
 
-export async function fetchAppChart(chart: string, signal: AbortSignal): Promise<AppChart> {
-  return getJson<AppChart>(`/api/app-store/${chart}`, signal);
+export async function fetchRanking(chart: string, signal: AbortSignal): Promise<RankingChart> {
+  return getJson<RankingChart>(`/api/rankings/${chart}`, signal);
 }
 
 export async function fetchHistory(
