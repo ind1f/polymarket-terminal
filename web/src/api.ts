@@ -10,11 +10,15 @@ export type Market = {
   volume24h: number;
   rules: string;
   resolutionSource: string | null;
+  closed: boolean;
+  result: number | null;
 };
 
 export type MarketEvent = {
   id: string;
   title: string;
+  slug: string | null;
+  seriesId: string | null;
   volume24h: number;
   liquidity: number;
   endDate: string | null;
@@ -46,6 +50,41 @@ export type RankingChart = {
   fetched_ms: number;
 };
 
+export type SeriesEvent = {
+  id: string;
+  title: string;
+  end_date: string | null;
+  closed: boolean;
+  result: string | null;
+};
+
+export type Series = { key: string; events: SeriesEvent[]; fetched_ms: number };
+
+export function placeholderEvent(
+  id: string,
+  title: string,
+  extra: Partial<MarketEvent> = {},
+): MarketEvent {
+  return {
+    id,
+    title,
+    slug: null,
+    seriesId: null,
+    volume24h: 0,
+    liquidity: 0,
+    endDate: null,
+    createdAt: null,
+    rules: "",
+    resolutionSource: null,
+    markets: [],
+    ...extra,
+  };
+}
+
+export async function fetchMarketHistory(eventId: string, signal: AbortSignal): Promise<Series> {
+  return getJson<Series>(`/api/history/${eventId}`, signal);
+}
+
 export type PricePoint = { time: number; value: number };
 
 export type Interval = "1d" | "1w" | "1m" | "max";
@@ -70,6 +109,8 @@ type RawMarket = {
   volume24hr?: number;
   acceptingOrders?: boolean;
   enableOrderBook?: boolean;
+  active?: boolean;
+  closed?: boolean;
   description?: string;
   resolutionSource?: string;
 };
@@ -77,6 +118,8 @@ type RawMarket = {
 type RawEvent = {
   id: string;
   title: string;
+  slug?: string;
+  series?: { id: string }[];
   volume24hr?: number;
   liquidity?: number;
   endDate?: string;
@@ -100,6 +143,8 @@ async function getJson<T>(url: string, signal: AbortSignal): Promise<T> {
 
 function toMarket(raw: RawMarket): Market {
   const prices: string[] = JSON.parse(raw.outcomePrices ?? "[]");
+  const settled = prices.map(Number);
+  const resolved = Boolean(raw.closed) && settled.length === 2 && settled.includes(1);
   return {
     id: raw.id,
     label: raw.groupItemTitle || raw.question,
@@ -112,6 +157,8 @@ function toMarket(raw: RawMarket): Market {
     volume24h: raw.volume24hr ?? 0,
     rules: raw.description?.trim() ?? "",
     resolutionSource: raw.resolutionSource?.trim() || null,
+    closed: !raw.acceptingOrders,
+    result: resolved ? settled.indexOf(1) : null,
   };
 }
 
@@ -119,17 +166,36 @@ function toEvent(raw: RawEvent): MarketEvent {
   return {
     id: raw.id,
     title: raw.title,
+    slug: raw.slug ?? null,
+    seriesId: raw.series?.[0]?.id ?? null,
     volume24h: raw.volume24hr ?? 0,
     liquidity: raw.liquidity ?? 0,
     endDate: raw.endDate ?? null,
     createdAt: raw.createdAt ?? null,
     rules: raw.description?.trim() ?? "",
     resolutionSource: raw.resolutionSource?.trim() || null,
-    markets: (raw.markets ?? [])
-      .filter(isTradable)
-      .map(toMarket)
-      .sort((a, b) => (b.price ?? 0) - (a.price ?? 0)),
+    markets: listedMarkets(raw.markets ?? []).sort((a, b) => (b.price ?? 0) - (a.price ?? 0)),
   };
+}
+
+function listedMarkets(raw: RawMarket[]): Market[] {
+  const open = raw.filter(isTradable).map(toMarket);
+  if (open.length > 0) return open;
+  return raw
+    .filter((market) => market.closed && market.clobTokenIds)
+    .map((market) => ({ raw: market, parsed: toMarket(market) }))
+    .filter(({ raw: market, parsed }) => market.active !== false || parsed.result === 0)
+    .map(({ parsed }) => parsed);
+}
+
+export function eventResult(event: MarketEvent): string | null {
+  if (event.markets.length === 0 || event.markets.some((market) => !market.closed)) return null;
+  if (event.markets.length === 1) {
+    const [market] = event.markets;
+    return market.result === null ? "Awaiting resolution" : market.outcomes[market.result];
+  }
+  if (event.markets.some((market) => market.result === null)) return "Awaiting resolution";
+  return event.markets.find((market) => market.result === 0)?.label ?? "None of the listed outcomes";
 }
 
 function isTradable(market: RawMarket): boolean {

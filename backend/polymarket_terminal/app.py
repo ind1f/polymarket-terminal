@@ -10,6 +10,7 @@ from pydantic import TypeAdapter, ValidationError
 
 from polymarket_terminal.feed import Feed
 from polymarket_terminal.rankings import CHARTS, FETCH_ERRORS, Rankings
+from polymarket_terminal.series import HistoryCache
 from polymarket_terminal.recorder import Recorder
 from polymarket_terminal.universe import refresh_universe
 
@@ -34,6 +35,7 @@ async def lifespan(app: FastAPI):
     app.state.feed = feed
     client = httpx.AsyncClient(timeout=20)
     app.state.rankings = Rankings(client)
+    app.state.history = HistoryCache(client)
     tasks = [asyncio.create_task(feed.run())]
     if recorder:
         tasks.append(asyncio.create_task(recorder.run()))
@@ -99,6 +101,17 @@ async def run_until_disconnect(socket: WebSocket, send: Callable[[], Awaitable[N
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
+
+
+@app.get("/api/history/{event_id}")
+async def history(event_id: str) -> dict:
+    if not event_id.isdigit():
+        raise HTTPException(status_code=404, detail="Unknown event")
+    cache: HistoryCache = app.state.history
+    try:
+        return await cache.get(event_id)
+    except (httpx.HTTPError, KeyError, ValueError) as error:
+        raise HTTPException(status_code=502, detail="History unavailable") from error
 
 
 @app.websocket("/ws/book/{token}")

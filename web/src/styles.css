@@ -217,6 +217,42 @@ input {
   gap: 12px;
 }
 
+.detail-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  margin-top: 6px;
+}
+
+.detail-meta:empty {
+  display: none;
+}
+
+.series-picker {
+  max-width: 100%;
+  padding: 2px 6px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--surface);
+  font-family: var(--mono);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.external {
+  flex: none;
+  color: var(--muted);
+  font-size: 12px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.external:hover {
+  color: var(--text);
+  text-decoration: underline;
+}
+
 .detail-title .star {
   padding: 0 2px;
   font-size: 18px;
@@ -304,7 +340,7 @@ h2 {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  margin: 14px 0;
+  margin: 12px 0 14px;
 }
 
 .stats {
@@ -431,6 +467,10 @@ button.outcome-row:hover,
 
 .outcome-row.active {
   box-shadow: inset 2px 0 var(--text);
+}
+
+.outcome-row.won {
+  font-weight: 700;
 }
 
 .outcome-head {
@@ -620,7 +660,18 @@ button.outcome-row:hover,
 .overlay {
   position: absolute;
   inset: 0;
-  display: grid;
-  place-items: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   pointer-events: none;
+}
+
+.inline-action {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  text-decoration: underline;
+  cursor: pointer;
+  pointer-events: auto;
 }

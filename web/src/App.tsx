@@ -1,12 +1,15 @@
 import { useEffect, useState, type DragEvent } from "react";
 import {
+  eventResult,
   fetchEvent,
   fetchEvents,
   fetchHistory,
   fetchNewEvents,
   fetchRandomEvents,
   fetchRanking,
+  fetchMarketHistory,
   fetchWatchedEvents,
+  placeholderEvent,
   searchEvents,
   type Interval,
   type Market,
@@ -17,6 +20,7 @@ import { OrderBook } from "./OrderBook";
 import { PriceChart } from "./PriceChart";
 import { findRow, parseRankingEvent, RankingPanel } from "./RankingPanel";
 import { Rules } from "./Rules";
+import { SeriesPicker } from "./SeriesPicker";
 import { Splitter } from "./Splitter";
 import { useBook } from "./useBook";
 import { usePanelWidths } from "./usePanelWidths";
@@ -54,6 +58,8 @@ function quote(market: Market, outcome: number, live?: Quote) {
 function topLine(event: MarketEvent, loading: boolean): string {
   const top = event.markets[0];
   if (!top) return loading ? "Loading…" : "No open markets";
+  const result = eventResult(event);
+  if (result) return result === "Awaiting resolution" ? "Closed, awaiting result" : `Result: ${result}`;
   return event.markets.length > 1 ? `${top.label} ${cents(top.price)}` : cents(top.price);
 }
 
@@ -89,16 +95,7 @@ export function App() {
     data: watchlist.entries.map(
       (entry) =>
         watched.data?.find((candidate) => candidate.id === entry.id) ??
-        ({
-          ...entry,
-          volume24h: 0,
-          liquidity: 0,
-          endDate: null,
-          createdAt: null,
-          rules: "",
-          resolutionSource: null,
-          markets: [],
-        } as MarketEvent),
+        placeholderEvent(entry.id, entry.title),
     ),
     error: watched.error,
   };
@@ -121,10 +118,20 @@ export function App() {
   const market =
     event?.markets.find((candidate) => candidate.id === marketId) ?? event?.markets[0] ?? null;
   const token = market?.tokens[outcome] ?? null;
+  const closed = market?.closed ?? false;
+  const result = event ? eventResult(event) : null;
+  const series = usePolling(
+    (signal) => fetchMarketHistory(event!.id, signal),
+    event?.seriesId ? event.id : null,
+    300_000,
+    true,
+  );
 
-  const book = useBook(token);
+  const book = useBook(closed ? null : token);
   const quotes = useQuotes(
-    event && event.markets.length > 1 ? event.markets.map((candidate) => candidate.tokens[0]) : [],
+    event && event.markets.length > 1
+      ? event.markets.filter((candidate) => !candidate.closed).map((candidate) => candidate.tokens[0])
+      : [],
   );
   const historyKey = token && `${token}:${interval}`;
   const history = usePolling(
@@ -139,7 +146,7 @@ export function App() {
     ranking?.chart ?? null,
     60_000,
   );
-  const rankColumn = rankChart.data !== null && ranking !== null;
+  const rankColumn = rankChart.data !== null && ranking !== null && result === null;
 
   const selectEvent = (next: MarketEvent) => {
     setSelected(next);
@@ -314,20 +321,56 @@ export function App() {
                 {watchlist.has(event.id) ? "★" : "☆"}
               </button>
             </div>
+            <div className="detail-meta">
+              {event.seriesId && series.data?.events.some((item) => item.id === event.id) && (
+                <SeriesPicker
+                  series={series.data}
+                  selectedId={event.id}
+                  selectedTitle={event.title}
+                  onSelect={(picked) =>
+                    selectEvent(
+                      placeholderEvent(picked.id, picked.title, {
+                        seriesId: event.seriesId,
+                        endDate: picked.end_date,
+                      }),
+                    )
+                  }
+                />
+              )}
+              {event.slug && (
+                <a
+                  className="external"
+                  href={`https://polymarket.com/event/${encodeURIComponent(event.slug)}`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Polymarket ↗
+                </a>
+              )}
+            </div>
             <div className="stats-row">
               <dl className="stats">
-                <div>
-                  <dt>Bid</dt>
-                  <dd>{cents(bestBid)}</dd>
-                </div>
-                <div>
-                  <dt>Ask</dt>
-                  <dd>{cents(bestAsk)}</dd>
-                </div>
-                <div>
-                  <dt>Last</dt>
-                  <dd>{cents(market && quote(market, outcome).last)}</dd>
-                </div>
+                {result ? (
+                  <div>
+                    <dt>Result</dt>
+                    <dd>{result}</dd>
+                  </div>
+                ) : (
+                  <>
+                    <div>
+                      <dt>Bid</dt>
+                      <dd>{cents(bestBid)}</dd>
+                    </div>
+                    <div>
+                      <dt>Ask</dt>
+                      <dd>{cents(bestAsk)}</dd>
+                    </div>
+                    <div>
+                      <dt>Last</dt>
+                      <dd>{cents(market && quote(market, outcome).last)}</dd>
+                    </div>
+                  </>
+                )}
                 <div>
                   <dt>24h volume</dt>
                   <dd>{dollars(event.volume24h)}</dd>
@@ -366,13 +409,14 @@ export function App() {
                 {event.markets.map((candidate) => {
                   const active = candidate.id === market.id;
                   const row = quote(candidate, outcome, quotes[candidate.tokens[0]]);
+                  const won = candidate.result === 0;
                   return (
                     <button
-                      className={`outcome-row ${active ? "active" : ""} ${rankColumn ? "with-rank" : ""}`}
+                      className={`outcome-row ${active ? "active" : ""} ${rankColumn ? "with-rank" : ""} ${won ? "won" : ""}`}
                       key={candidate.id}
                       onClick={() => selectMarket(candidate)}
                     >
-                      <span>{candidate.label}</span>
+                      <span>{won ? `✓ ${candidate.label}` : candidate.label}</span>
                       {rankColumn && (
                         <span>
                           {findRow(rankChart.data!.rows, candidate.label, ranking!.prefixMatch)
@@ -380,8 +424,12 @@ export function App() {
                         </span>
                       )}
                       <span>{cents(row.price)}</span>
-                      <span>{cents(active && book.data ? bestBid : row.bid)}</span>
-                      <span>{cents(active && book.data ? bestAsk : row.ask)}</span>
+                      <span>
+                        {candidate.closed ? "–" : cents(active && book.data ? bestBid : row.bid)}
+                      </span>
+                      <span>
+                        {candidate.closed ? "–" : cents(active && book.data ? bestAsk : row.ask)}
+                      </span>
                       <span>{dollars(candidate.volume24h)}</span>
                     </button>
                   );
@@ -412,7 +460,17 @@ export function App() {
                   <p className="message overlay">Couldn't load history: {history.error}</p>
                 )}
                 {history.data?.length === 0 && (
-                  <p className="message overlay">No price history for this range</p>
+                  <p className="message overlay">
+                    No price history for this range
+                    {closed && interval !== "max" && (
+                      <>
+                        {" · "}
+                        <button className="inline-action" onClick={() => setInterval("max")}>
+                          Show full history
+                        </button>
+                      </>
+                    )}
+                  </p>
                 )}
               </div>
               {ranking && (
@@ -430,7 +488,13 @@ export function App() {
             />
           </>
         ) : (
-          <p className="message">{event ? "No open markets in this event" : "Select a market"}</p>
+          <p className="message">
+            {!event
+              ? "Select a market"
+              : live.data?.id === event.id
+                ? "No markets to show in this event"
+                : "Loading market…"}
+          </p>
         )}
       </main>
 
@@ -442,8 +506,9 @@ export function App() {
           onResize={panels.resize}
         />
         <h2>Order book</h2>
-        {book.error && !book.data && <p className="message">{book.error}</p>}
-        {!book.data && !book.error && <p className="message">Loading book…</p>}
+        {closed && <p className="message">Market closed, so there is no order book.</p>}
+        {!closed && book.error && !book.data && <p className="message">{book.error}</p>}
+        {!closed && !book.data && !book.error && <p className="message">Loading book…</p>}
         {book.data && <OrderBook book={book.data} />}
       </aside>
     </div>
