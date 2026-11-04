@@ -1,6 +1,9 @@
 import { useEffect, useState, type DragEvent } from "react";
+import { GiftIcon } from "./GiftIcon";
 import {
   eventResult,
+  eventRewards,
+  rewardSummary,
   fetchEvent,
   fetchEvents,
   fetchHistory,
@@ -287,6 +290,11 @@ export function App() {
                       {topLine(candidate, !watched.data?.some(({ id }) => id === candidate.id))}
                     </span>
                     <span className="muted market-volume">
+                      {eventRewards(candidate) && (
+                        <GiftIcon
+                          title={`Liquidity rewards: $${eventRewards(candidate)!.dailyRate}/day across ${eventRewards(candidate)!.outcomes} outcome${eventRewards(candidate)!.outcomes === 1 ? "" : "s"}`}
+                        />
+                      )}
                       {view === "new" && !search && candidate.createdAt
                         ? age(candidate.createdAt)
                         : `${dollars(candidate.volume24h)} 24h`}
@@ -369,6 +377,12 @@ export function App() {
                       <dt>Last</dt>
                       <dd>{cents(market && quote(market, outcome).last)}</dd>
                     </div>
+                    {eventRewards(event) && (
+                      <div title={market.rewards ? rewardSummary(market.rewards) : "No rewards on this outcome"}>
+                        <dt>Rewards</dt>
+                        <dd>{market.rewards ? `$${market.rewards.dailyRate}/day` : "–"}</dd>
+                      </div>
+                    )}
                   </>
                 )}
                 <div>
@@ -416,7 +430,10 @@ export function App() {
                       key={candidate.id}
                       onClick={() => selectMarket(candidate)}
                     >
-                      <span>{won ? `✓ ${candidate.label}` : candidate.label}</span>
+                      <span>
+                        {won ? `✓ ${candidate.label}` : candidate.label}
+                        {candidate.rewards && <GiftIcon title={rewardSummary(candidate.rewards)} />}
+                      </span>
                       {rankColumn && (
                         <span>
                           {findRow(rankChart.data!.rows, candidate.label, ranking!.prefixMatch)
@@ -509,7 +526,7 @@ export function App() {
         {closed && <p className="message">Market closed, so there is no order book.</p>}
         {!closed && book.error && !book.data && <p className="message">{book.error}</p>}
         {!closed && !book.data && !book.error && <p className="message">Loading book…</p>}
-        {book.data && <OrderBook book={book.data} />}
+        {book.data && <OrderBook book={book.data} rewards={closed ? null : (market?.rewards ?? null)} />}
       </aside>
     </div>
   );

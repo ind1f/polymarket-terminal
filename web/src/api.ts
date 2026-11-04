@@ -12,7 +12,10 @@ export type Market = {
   resolutionSource: string | null;
   closed: boolean;
   result: number | null;
+  rewards: Rewards | null;
 };
+
+export type Rewards = { dailyRate: number; minSize: number | null; maxSpread: number | null };
 
 export type MarketEvent = {
   id: string;
@@ -111,6 +114,9 @@ type RawMarket = {
   enableOrderBook?: boolean;
   active?: boolean;
   closed?: boolean;
+  clobRewards?: { rewardsDailyRate?: number; startDate?: string; endDate?: string }[] | null;
+  rewardsMinSize?: number;
+  rewardsMaxSpread?: number;
   description?: string;
   resolutionSource?: string;
 };
@@ -159,6 +165,33 @@ function toMarket(raw: RawMarket): Market {
     resolutionSource: raw.resolutionSource?.trim() || null,
     closed: !raw.acceptingOrders,
     result: resolved ? settled.indexOf(1) : null,
+    rewards: raw.acceptingOrders ? activeRewards(raw) : null,
+  };
+}
+
+function activeRewards(raw: RawMarket): Rewards | null {
+  const today = new Date().toISOString().slice(0, 10);
+  const dailyRate = (raw.clobRewards ?? [])
+    .filter((reward) => (!reward.startDate || reward.startDate <= today) && (!reward.endDate || today <= reward.endDate))
+    .reduce((total, reward) => total + (reward.rewardsDailyRate ?? 0), 0);
+  if (dailyRate <= 0) return null;
+  return { dailyRate, minSize: raw.rewardsMinSize ?? null, maxSpread: raw.rewardsMaxSpread ?? null };
+}
+
+export function rewardSummary(rewards: Rewards): string {
+  const conditions = [
+    rewards.maxSpread !== null ? `within ${rewards.maxSpread}¢ of the midpoint` : null,
+    rewards.minSize !== null ? `at least ${rewards.minSize} shares` : null,
+  ].filter(Boolean);
+  return `Liquidity rewards: $${rewards.dailyRate}/day${conditions.length ? ` for orders ${conditions.join(", ")}` : ""}`;
+}
+
+export function eventRewards(event: MarketEvent): { dailyRate: number; outcomes: number } | null {
+  const rewarded = event.markets.filter((market) => market.rewards);
+  if (rewarded.length === 0) return null;
+  return {
+    dailyRate: rewarded.reduce((total, market) => total + market.rewards!.dailyRate, 0),
+    outcomes: rewarded.length,
   };
 }
 

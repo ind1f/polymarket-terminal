@@ -616,6 +616,25 @@ button.outcome-row:hover,
   text-align: left;
 }
 
+.book-row.in-band {
+  box-shadow: inset 3px 0 var(--text);
+}
+
+.book-rewards {
+  margin: 0 12px 6px;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 11px;
+}
+
+.gift {
+  flex: none;
+  margin: 0 4px;
+  vertical-align: -1px;
+}
+
 .book-head {
   color: var(--muted);
   font-size: 11px;
