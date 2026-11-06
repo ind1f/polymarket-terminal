@@ -8,17 +8,29 @@ import httpx
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import TypeAdapter, ValidationError
 
+from polymarket_terminal.alerts import AlertLoop, RankAlerts, Telegram
+from polymarket_terminal.envfile import load_env
 from polymarket_terminal.feed import Feed
 from polymarket_terminal.rankings import CHARTS, FETCH_ERRORS, Rankings
 from polymarket_terminal.series import HistoryCache
+from polymarket_terminal.snapshots import Snapshotter, collect
 from polymarket_terminal.recorder import Recorder
 from polymarket_terminal.universe import refresh_universe
+
+load_env()
 
 FEED_URL = "wss://ws-subscriptions-clob.polymarket.com/ws/market"
 DATA_DIR = Path(os.environ.get("DATA_DIR", Path(__file__).parents[2] / "data" / "raw"))
 RECORD_DATA = os.environ.get("RECORD_DATA") == "1"
 RECORD_MARKETS = int(os.environ.get("RECORD_MARKETS", "50"))
 MIN_FREE_GB = float(os.environ.get("MIN_FREE_GB", "5"))
+RANK_SNAPSHOTS = os.environ.get("RANK_SNAPSHOTS", "1") == "1"
+SNAPSHOT_PATH = Path(__file__).parents[2] / "data" / "rankings" / "appstore.csv"
+ALERT_STATE_PATH = SNAPSHOT_PATH.with_name("alerts.json")
+APP_ALERTS = [app_id.strip() for app_id in os.environ.get("APP_ALERTS", "6462904878").split(",") if app_id.strip()]
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
+ALERT_INTERVAL_SECONDS = float(os.environ.get("ALERT_INTERVAL_SECONDS", "60"))
 UNIVERSE_REFRESH_SECONDS = 600
 STREAM_INTERVAL_SECONDS = 0.1
 QUOTE_INTERVAL_SECONDS = 0.25
@@ -37,6 +49,27 @@ async def lifespan(app: FastAPI):
     app.state.rankings = Rankings(client)
     app.state.history = HistoryCache(client)
     tasks = [asyncio.create_task(feed.run())]
+    app.state.alerts = (
+        RankAlerts(Telegram(client, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID), APP_ALERTS, ALERT_STATE_PATH)
+        if TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID and APP_ALERTS
+        else None
+    )
+    if app.state.alerts is None:
+        logging.getLogger(__name__).info("Telegram alerts off: TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID missing")
+    app.state.snapshots = Snapshotter(app.state.rankings, SNAPSHOT_PATH) if RANK_SNAPSHOTS else None
+    app.state.alert_loop = (
+        AlertLoop(
+            app.state.alerts,
+            lambda now: collect(app.state.rankings, now),
+            ALERT_INTERVAL_SECONDS,
+        )
+        if app.state.alerts
+        else None
+    )
+    if app.state.snapshots:
+        tasks.append(asyncio.create_task(app.state.snapshots.run()))
+    if app.state.alert_loop:
+        tasks.append(asyncio.create_task(app.state.alert_loop.run()))
     if recorder:
         tasks.append(asyncio.create_task(recorder.run()))
         tasks.append(
@@ -67,6 +100,26 @@ def health() -> dict:
         "books": len(feed.books),
         "recording": recorder is not None,
     }
+    snapshots: Snapshotter | None = app.state.snapshots
+    if snapshots:
+        status["rank_snapshots"] = {
+            "last": snapshots.last.isoformat() if snapshots.last else None,
+            "rows": snapshots.last_rows,
+            "error": snapshots.last_error,
+        }
+    alerts: RankAlerts | None = app.state.alerts
+    loop: AlertLoop | None = app.state.alert_loop
+    status["telegram_alerts"] = (
+        {
+            "watching": alerts.app_ids,
+            "every_seconds": ALERT_INTERVAL_SECONDS,
+            "last_check": loop.last_check.isoformat() if loop and loop.last_check else None,
+            "sent": alerts.sent,
+            "error": alerts.last_error,
+        }
+        if alerts
+        else "off"
+    )
     if recorder:
         status |= {
             "rows_written": recorder.rows_written,

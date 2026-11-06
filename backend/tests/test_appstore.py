@@ -40,8 +40,8 @@ def fetch_with(handler) -> dict:
 
 def test_merge_keeps_chart_order_and_tolerates_missing_details():
     assert merge(FEED["feed"]["results"], LOOKUP) == [
-        {"rank": 1, "name": "First", "values": [4.5, 900]},
-        {"rank": 2, "name": "Second", "values": [None, None]},
+        {"rank": 1, "id": "1", "name": "First", "values": [4.5, 900]},
+        {"rank": 2, "id": "2", "name": "Second", "values": [None, None]},
     ]
 
 

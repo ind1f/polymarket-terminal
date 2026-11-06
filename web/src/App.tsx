@@ -30,10 +30,11 @@ import { usePanelWidths } from "./usePanelWidths";
 import { usePolling } from "./usePolling";
 import { useQuotes, type Quote } from "./useQuotes";
 import { useWatchlist } from "./useWatchlist";
+import { readUrlState, writeUrlState, type View } from "./urlState";
 
 const INTERVALS: Interval[] = ["1d", "1w", "1m", "max"];
 
-type View = "top" | "watchlist" | "new" | "random";
+const startup = readUrlState();
 
 const VIEWS: { id: View; label: string }[] = [
   { id: "top", label: "Top" },
@@ -70,14 +71,16 @@ export function App() {
   const events = usePolling(fetchEvents, "events", 300_000);
   const watchlist = useWatchlist();
   const panels = usePanelWidths();
-  const [view, setView] = useState<View>("top");
+  const [view, setView] = useState<View>(startup.view);
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dropIndex, setDropIndex] = useState<number | null>(null);
   const [shuffles, setShuffles] = useState(0);
-  const [selected, setSelected] = useState<MarketEvent | null>(null);
-  const [marketId, setMarketId] = useState<string | null>(null);
-  const [outcome, setOutcome] = useState(0);
-  const [interval, setInterval] = useState<Interval>("1w");
+  const [selected, setSelected] = useState<MarketEvent | null>(() =>
+    startup.eventId ? placeholderEvent(startup.eventId, "Loading market…") : null,
+  );
+  const [marketId, setMarketId] = useState<string | null>(startup.marketId);
+  const [outcome, setOutcome] = useState(startup.outcome);
+  const [interval, setInterval] = useState<Interval>(startup.interval);
   const [search, setSearch] = useState("");
   const [query, setQuery] = useState("");
 
@@ -150,6 +153,16 @@ export function App() {
     60_000,
   );
   const rankColumn = rankChart.data !== null && ranking !== null && result === null;
+
+  useEffect(() => {
+    writeUrlState({
+      view,
+      eventId: selected?.id ?? null,
+      marketId: selected ? (market?.id ?? marketId) : null,
+      outcome,
+      interval,
+    });
+  }, [view, selected?.id, market?.id, marketId, outcome, interval]);
 
   const selectEvent = (next: MarketEvent) => {
     setSelected(next);
@@ -510,7 +523,9 @@ export function App() {
               ? "Select a market"
               : live.data?.id === event.id
                 ? "No markets to show in this event"
-                : "Loading market…"}
+                : live.error
+                  ? `Couldn't load this market: ${live.error}`
+                  : "Loading market…"}
           </p>
         )}
       </main>

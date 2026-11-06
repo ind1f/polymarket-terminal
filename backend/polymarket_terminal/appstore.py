@@ -37,6 +37,7 @@ def merge(results: list[dict], lookup: dict) -> list[dict]:
         rows.append(
             {
                 "rank": rank,
+                "id": app["id"],
                 "name": app["name"],
                 "values": [detail.get("averageUserRating"), detail.get("userRatingCount")],
             }
